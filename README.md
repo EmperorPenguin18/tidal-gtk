@@ -1,4 +1,15 @@
 # tidal-gtk
-Graphical frontend for the Tidal game engine
+Graphical frontend for the Tidal2D game engine
 
-https://github.com/pavouk/lgi
+## Dependencies
+
+Python and Gtk4+PyGObject
+
+## Install
+
+```
+git clone https://github.com/EmperorPenguin18/tidal-gtk
+cd tidal-gtk
+pip install -r requirements.txt
+make install # as root
+```
