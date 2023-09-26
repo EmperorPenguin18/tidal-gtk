@@ -2,6 +2,7 @@
 
 import sys
 import os
+import json
 import gi
 gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk, GLib, Gio
@@ -13,10 +14,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.box1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.box2 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.box3 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.box4 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 
         self.set_child(self.box1)
         self.box1.append(self.box2)
         self.box1.append(self.box3)
+        self.box1.append(self.box4)
 
         self.set_default_size(600, 250)
         self.set_title("Tidal2D")
@@ -55,6 +58,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.box2.set_margin_start(10)
         self.box2.set_margin_end(10)
 
+        label = Gtk.Label.new("Project")
+        self.box2.append(label)
         self.scroll = Gtk.ScrolledWindow()
         self.scroll.set_min_content_height(400)
         self.scroll.set_min_content_width(200)
@@ -63,7 +68,21 @@ class MainWindow(Gtk.ApplicationWindow):
         self.scroll.set_child(self.listbox)
         self.box2.append(self.scroll)
 
+        button = Gtk.Button.new_with_label("Save")
+        button.connect("clicked", self.save_object)
+        self.box2.append(button)
+
         self.project_path = ""
+        self.filename = ""
+        self.obj = {}
+        self.event = ""
+
+        collisionevent = Gio.SimpleAction.new("collision", None)
+        collisionevent.connect("activate", self.event_collision)
+        self.add_action(collisionevent)
+        spawnaction = Gio.SimpleAction.new("spawn", None)
+        spawnaction.connect("activate", self.action_spawn)
+        self.add_action(spawnaction)
 
     def show_open_dialog(self, button):
         self.open_dialog.select_folder(self, None, self.open_dialog_open_callback)
@@ -100,28 +119,118 @@ class MainWindow(Gtk.ApplicationWindow):
         self.box1.remove(self.box3)
         self.box3 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.box1.append(self.box3)
-        filename = self.project_path+os.sep+row.get_child().get_label()
+        self.filename = self.project_path+os.sep+row.get_child().get_label()
         button = Gtk.Button.new_with_label("Open externally")
-        button.connect('clicked', self.open_external, filename)
-        name, ext = os.path.splitext(filename)
+        button.connect('clicked', self.open_external)
+        name, ext = os.path.splitext(self.filename)
         if ext == ".bmp" or ext == ".png" or ext == ".jpg":
-            image = Gtk.Image.new_from_file(filename)
+            image = Gtk.Image.new_from_file(self.filename)
             self.box3.append(image)
         if ext == ".wav" or ext == ".ogg":
-            media = Gtk.MediaFile.new_for_filename(filename)
+            media = Gtk.MediaFile.new_for_filename(self.filename)
             media.play()
         if ext == ".lua":
-            f = open(filename, "r")
+            f = open(self.filename, "r")
             label = Gtk.Label.new(f.read())
             f.close()
             self.box3.append(label)
         if ext == ".json":
-            print('sus')
+            self.show_events()
         else:
             self.box3.append(button)
 
-    def open_external(self, button, param):
-        os.system(f"xdg-open {param}")
+    def open_external(self, button):
+        os.system(f"xdg-open {self.filename}")
+
+    def show_events(self):
+        f = open(self.filename, "r")
+        self.obj = json.loads(f.read())
+        f.close()
+        self.box3.set_spacing(10)
+        self.box3.set_margin_top(10)
+        self.box3.set_margin_bottom(10)
+        self.box3.set_margin_start(10)
+        self.box3.set_margin_end(10)
+        title = Gtk.Label.new("Events")
+        self.box3.append(title)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_min_content_height(400)
+        scroll.set_min_content_width(100)
+        listbox = Gtk.ListBox()
+        listbox.connect("row-selected", self.show_actions)
+        scroll.set_child(listbox)
+        self.box3.append(scroll)
+        try:
+            for key in self.obj["events"]:
+                label = Gtk.Label.new(key)
+                row = Gtk.ListBoxRow()
+                row.set_child(label)
+                listbox.append(row)
+        except KeyError:
+            pass
+        menu = Gio.Menu.new()
+        menu.append("Collision", "win.collision")
+        popover = Gtk.PopoverMenu()
+        popover.set_menu_model(menu)
+        button = Gtk.MenuButton()
+        button.set_popover(popover)
+        addlabel = Gtk.Label.new("Add event")
+        button.set_child(addlabel)
+        self.box3.append(button)
+
+    def show_actions(self, box, row):
+        self.event = row.get_child().get_label()
+        self.box1.remove(self.box4)
+        self.box4 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.box1.append(self.box4)
+        self.box4.set_spacing(10)
+        self.box4.set_margin_top(10)
+        self.box4.set_margin_bottom(10)
+        self.box4.set_margin_start(10)
+        self.box4.set_margin_end(10)
+        title = Gtk.Label.new("Actions")
+        self.box4.append(title)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_min_content_height(400)
+        scroll.set_min_content_width(100)
+        listbox = Gtk.ListBox()
+        listbox.connect("row-selected", self.show_params)
+        scroll.set_child(listbox)
+        self.box4.append(scroll)
+        try:
+            for action in self.obj["events"][row.get_child().get_label()]:
+                label = Gtk.Label.new(action["type"])
+                row = Gtk.ListBoxRow()
+                row.set_child(label)
+                listbox.append(row)
+        except KeyError:
+            pass
+        menu = Gio.Menu.new()
+        menu.append("Spawn", "win.spawn")
+        popover = Gtk.PopoverMenu()
+        popover.set_menu_model(menu)
+        button = Gtk.MenuButton()
+        button.set_popover(popover)
+        addlabel = Gtk.Label.new("Add action")
+        button.set_child(addlabel)
+        self.box4.append(button)
+
+    def show_params(self, box, row):
+        print(row.get_child().get_label())
+
+    def save_object(self, button):
+        try:
+            f = open(self.filename, "w")
+            f.write(json.dumps(self.obj, indent="\t"))
+            f.close()
+        except FileNotFoundError:
+            pass
+
+    def event_collision(self, action, param):
+        self.obj["events"]["collision"] = []
+
+    def action_spawn(self, action, param):
+        self.obj["events"][self.event].append({"type": "spawn"})
 
 class MyApp(Gtk.Application):
     def __init__(self, **kwargs):
