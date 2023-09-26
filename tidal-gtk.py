@@ -12,12 +12,14 @@ class MainWindow(Gtk.ApplicationWindow):
         # Things will go here
         self.box1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.box2 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.box3 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 
         self.set_child(self.box1)
         self.box1.append(self.box2)
+        self.box1.append(self.box3)
 
         self.set_default_size(600, 250)
-        self.set_title("MyApp")
+        self.set_title("Tidal2D")
 
         self.header = Gtk.HeaderBar()
         self.set_titlebar(self.header)
@@ -27,15 +29,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.open_button.set_icon_name("document-open-symbolic")
 
         self.open_dialog = Gtk.FileDialog.new()
-        self.open_dialog.set_title("Select a File")
-
-        action = Gio.SimpleAction.new("something", None)
-        action.connect("activate", self.print_something)
-        self.add_action(action)
+        self.open_dialog.set_title("Select a Folder")
 
         menu = Gio.Menu.new()
-        menu.append("Do Something", "win.something")
-
         self.popover = Gtk.PopoverMenu()
         self.popover.set_menu_model(menu)
 
@@ -45,7 +41,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.header.pack_start(self.hamburger)
 
-        GLib.set_application_name("My App")
+        GLib.set_application_name("tidal-gtk")
 
         action = Gio.SimpleAction.new("about", None)
         action.connect("activate", self.show_about)
@@ -63,8 +59,11 @@ class MainWindow(Gtk.ApplicationWindow):
         self.scroll.set_min_content_height(400)
         self.scroll.set_min_content_width(200)
         self.listbox = Gtk.ListBox()
+        self.listbox.connect("row-selected", self.selection_changed)
         self.scroll.set_child(self.listbox)
         self.box2.append(self.scroll)
+
+        self.project_path = ""
 
     def show_open_dialog(self, button):
         self.open_dialog.select_folder(self, None, self.open_dialog_open_callback)
@@ -73,6 +72,7 @@ class MainWindow(Gtk.ApplicationWindow):
         try:
             file = dialog.select_folder_finish(result)
             if file is not None:
+                self.project_path = file.get_path()
                 self.listbox.remove_all()
                 dir_list = os.listdir(file.get_path())
                 for item in dir_list:
@@ -82,9 +82,6 @@ class MainWindow(Gtk.ApplicationWindow):
                     self.listbox.append(row)
         except GLib.Error as error:
             print(f"Error opening file: {error.message}")
-
-    def print_something(self, action, param):
-        print("Something!")
 
     def show_about(self, action, param):
         self.about = Gtk.AboutDialog()
@@ -99,8 +96,32 @@ class MainWindow(Gtk.ApplicationWindow):
         self.about.set_version("0.1")
         self.about.set_visible(True)
 
-    def selection_changed(self, selection):
-        print(selection)
+    def selection_changed(self, box, row):
+        self.box1.remove(self.box3)
+        self.box3 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.box1.append(self.box3)
+        filename = self.project_path+os.sep+row.get_child().get_label()
+        button = Gtk.Button.new_with_label("Open externally")
+        button.connect('clicked', self.open_external, filename)
+        name, ext = os.path.splitext(filename)
+        if ext == ".bmp" or ext == ".png" or ext == ".jpg":
+            image = Gtk.Image.new_from_file(filename)
+            self.box3.append(image)
+        if ext == ".wav" or ext == ".ogg":
+            media = Gtk.MediaFile.new_for_filename(filename)
+            media.play()
+        if ext == ".lua":
+            f = open(filename, "r")
+            label = Gtk.Label.new(f.read())
+            f.close()
+            self.box3.append(label)
+        if ext == ".json":
+            print('sus')
+        else:
+            self.box3.append(button)
+
+    def open_external(self, button, param):
+        os.system(f"xdg-open {param}")
 
 class MyApp(Gtk.Application):
     def __init__(self, **kwargs):
