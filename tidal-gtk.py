@@ -6,6 +6,19 @@ import json
 import gi
 gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk, GLib, Gio
+import git
+import tarfile
+
+def bin2header(data, var_name='var'):
+    out = []
+    out.append('unsigned char {var_name}[] = {{'.format(var_name=var_name))
+    l = [ data[i:i+12] for i in range(0, len(data), 12) ]
+    for i, x in enumerate(l):
+        line = ', '.join([ '0x{val:02x}'.format(val=c) for c in x ])
+        out.append(' {line}{end_comma}'.format(line=line, end_comma=',' if i<len(l)-1 else ''))
+    out.append('};')
+    out.append('unsigned int {var_name}_len = {data_len};'.format(var_name=var_name, data_len=len(data)))
+    return '\n'.join(out)
 
 class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, *args, **kwargs):
@@ -33,6 +46,11 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.open_dialog = Gtk.FileDialog.new()
         self.open_dialog.set_title("Select a Folder")
+
+        self.run_button = Gtk.Button(label="Build and Run")
+        self.header.pack_start(self.run_button)
+        self.run_button.connect('clicked', self.build_and_run)
+        self.run_button.set_icon_name("media-playback-start-symbolic")
 
         menu = Gio.Menu.new()
         self.popover = Gtk.PopoverMenu()
@@ -231,6 +249,35 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def action_spawn(self, action, param):
         self.obj["events"][self.event].append({"type": "spawn"})
+
+    def build_and_run(self, button):
+        datadir = os.getenv("XDG_DATA_HOME")
+        if datadir == None:
+            if os.name == 'posix':
+                datadir = "/home/"+os.getlogin()+"/.local/share"
+            else:
+                datadir = "%APPDATA%"
+        buildpath = datadir+os.sep+"tidal-gtk"#+os.sep+"build"
+        try:
+            os.mkdir(buildpath)
+        except FileExistsError:
+            pass
+        try:
+            repo = git.Repo.clone_from("https://github.com/EmperorPenguin18/tidal2d", buildpath, multi_options=['--depth 1', '--branch 0.3'])
+        except git.exc.GitCommandError:
+            pass
+        tar = tarfile.open(buildpath+os.sep+"assets.tar", "w")
+        tar.add(self.project_path)
+        tar.close()
+        tar = open(buildpath+os.sep+"assets.tar", "rb")
+        header = open(buildpath+os.sep+"src"+os.sep+"embedded_assets.h", "w")
+        header.write(bin2header(tar.read(), "embedded_binary"))
+        tar.close()
+        header.close()
+        os.chdir(buildpath)
+        os.system("cmake . -DCMAKE_BUILD_TYPE=Debug -DSTATIC=ON")
+        os.system("cmake --build .")
+        os.system(f".{os.sep}tidal2d")
 
 class MyApp(Gtk.Application):
     def __init__(self, **kwargs):
